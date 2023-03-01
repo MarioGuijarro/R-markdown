@@ -1,0 +1,143 @@
+---
+title: 'Reporte Spotify'
+author: "Mario Guijarro"
+date: "2023-02-09"
+output: html_document
+---
+
+## Origen de los datos
+Los datos han sido sacados de kaggle , dejo el link a continuacion para poder ver el contenido original y consultarlo en caso de duda.
+https://www.kaggle.com/datasets/paradisejoy/top-hits-spotify-from-20002019
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r carga de librerias,include=FALSE}
+library(tidyverse)
+library(tidyr)
+library(ggplot2)
+library(dplyr)
+library(plotly)
+```
+
+
+#### Aquí un rapido vistazo de el contenido del dataset para saber que columnas vamos a usar y cuales no
+```{r importacion de datos, include=TRUE}
+datos_spotify<-read.csv("songs_normalize.csv",sep=",",header=TRUE)
+head(datos_spotify,5)
+```
+#### A continuación vamos a seleccionar las columnas que nos interesan para el análisis
+```{r}
+spotify<-datos_spotify[,c("artist","song","duration_ms","explicit","year","popularity","tempo","genre","danceability","speechiness","energy")]
+head(spotify,5)
+```
+Voy a cambiar el nombre de las columnas mas dudosas y a pasarlo todo al español, también aprovecho y corrijo la columna de milisegundos y lo paso a una unidad mejor interpretable como la de segundos.
+```{r}
+colnmes<-c("Artista","Cancion","Duracion_segundos","Contenido_explicito","Año","Popularidad_cancion","Tempo_BPM","Genero","Capacidad_ser_bailada","Presencia_de_palabras","Intensidad_Actividad")
+colnames(spotify)<-colnmes
+spotify$Duracion_segundos<-spotify$Duracion_segundos/1000
+head(spotify,5)
+```
+Seleccionando los 5 primeros registros para ver la forma que toma el dataset.
+
+## Análisis de variables
+
+### Aqui voy a ver cuantas canciones pertenecen a cada género.
+```{r}
+numero_canciones_x_genero<-spotify %>% select(Genero) %>% group_by(Genero) %>% summarise(numero_de_canciones=n()) %>% arrange(desc(numero_de_canciones))
+numero_canciones_x_genero
+
+```
+Aquí las tenemos todas las canciones agrupadas por género y ordenadas de mayor a menor.
+
+### Para luego hacer un grafico del top 10 generos que mas aparecen:
+```{r}
+ggplot(head(numero_canciones_x_genero,10),aes(x=Genero,y=numero_de_canciones,fill=Genero))+
+  geom_col()+theme(axis.text.x = element_blank())+ggtitle("Top 10 géneros de las canciones mas escuchadas")
+```
+
+Aquí vemos como los géneros:pop,(hip hop,pop),(hip hop, pop, R&B),(pop, Dance/Electronic),(pop, R&B),(hip hop),	(hip hop, pop, Dance/Electronic),rock,(rock, pop),(Dance/Electronic).
+Destacando por encima de todos el pop.
+
+### Numero de canciones por año que resultaron ser las mas escuchadas de los ultimos 20 años
+```{r}
+numero_canciones_año<-spotify %>% select(Año) %>% group_by(Año) %>% summarise(numero_de_canciones=n()) %>% arrange(Año)
+ggplot(numero_canciones_año,aes(x=Año,y=numero_de_canciones,fill=Año))+
+  geom_line()+theme(axis.text.x = element_text(angle = 45, hjust = 1))+ggtitle("Número de canciones por año")
+```
+
+Vemos como antes del 2000 hay pocos registros y por eso hay una gran pendiente , y lo mismo pasa en el 2020 que es cuando se dejaron de recoger datos en este top.
+Aparte de esto podemos observar como en el periodo 2010-2013 hay una gran actividad y se generaron muchas de las canciones mas escuchadas.
+
+### ¿Que artistas tienen mas canciones dentro de este top y además cuantas canciones tienen por encima o por debajo de la media?
+```{r}
+Numero_veces_artista<-spotify %>% select(Artista) %>% group_by(Artista) %>% summarise(Numero_de_canciones=n()) %>%  arrange(desc(Numero_de_canciones))
+Numero_veces_artista$Diferencia_vs_media<-Numero_veces_artista$Numero_de_canciones-mean(Numero_veces_artista$Numero_de_canciones)
+Numero_veces_artista
+```
+
+Aquí vemos como los artistas mas escuchados estan muy por encima de la media de canciones compuestas (Alrededor de 12) que entraron en el top.Todos son conocidos mundialmmente y en el top 10 no parece haber ninguna sorpresa.A continuacion vamos a mostrar a los 20 artistas con mas apariciones.
+```{r}
+top20<-head(Numero_veces_artista,20)
+pie(top20$Numero_de_canciones, clockwise = TRUE, labels = top20$Artista)
+title("Top 20 artistas con mas canciones en el top")
+
+```
+
+### Vamos a ver el top 10 canciones con mayor capacidad para ser bailadas , su año y su compositor
+```{r}
+baile<-spotify %>% select(Artista,Cancion,Año,Capacidad_ser_bailada,Popularidad_cancion) %>% group_by(Capacidad_ser_bailada) %>% arrange(desc(Capacidad_ser_bailada))
+head(baile,10)
+```
+
+Aquí vemos como las canciones mas bailables no son las mas populares.
+
+## Vamos a ver los beats por minuto de las canciones con mayor popularidad
+
+### Primero vemos las canciones mas pulares
+```{r}
+canciones_mas_populares<-spotify %>% select(Artista,Cancion,Popularidad_cancion) %>% group_by(Popularidad_cancion) %>% arrange(desc(Popularidad_cancion))
+canciones_mas_populares
+```
+
+
+### Y ahora vamos a observar sus beats por minuto para ver si hay alguna relacion
+
+```{r}
+beats<-spotify %>% select(Artista,Cancion,Popularidad_cancion,Tempo_BPM) %>% group_by(Popularidad_cancion) %>% arrange(desc(Popularidad_cancion))
+beats
+modelo_beats<-lm(Popularidad_cancion~Tempo_BPM,data = beats)
+summary(modelo_beats)
+```
+Aquí vemos como el tempo de la cancion no tiene por que afectar a su popularidad, ya que la variable no aparece como significativa.
+
+### Vamos a ver tambien los segundos que duran las canciones mas populares y ver si hay alguna relacion,tambien aprovechamos y vemos como afectan las variables a la popularidad de la canción.
+```{r}
+duracion<-spotify %>% select(Artista,Cancion,Popularidad_cancion,Duracion_segundos) %>% group_by(Popularidad_cancion) %>% arrange(desc(Popularidad_cancion))
+duracion
+```
+```{r}
+modelo <- lm(Popularidad_cancion ~Duracion_segundos+Contenido_explicito+Tempo_BPM+Capacidad_ser_bailada+Presencia_de_palabras+Intensidad_Actividad, data =spotify)
+summary(modelo)
+
+```
+Aquí vemos como la unica variable que se podria tener una relacion significante con la popularidad es la duracion de los segundos.
+
+### Vamos a ver que afecta a la intensidad de la cancion
+```{r}
+modelo_intensidad<-lm(Intensidad_Actividad~Duracion_segundos+Contenido_explicito+Tempo_BPM+Capacidad_ser_bailada+Presencia_de_palabras, data =spotify)
+summary(modelo_intensidad)
+```
+Aquí podemos ver como el tempo y la aparacicion de contenido explicito son muy significativas , junto con la duracion y la capacidad para ser bailadas , pero en menor medida.
+
+### Por último vamos a ver la relacion que tiene cada género con la popularidad y  el tempo(Beats Por Minuto).
+
+Para esto primero calculamos tanto el tempo medio comomla popularidad media por género.
+```{r}
+generos_BPM<-spotify %>% select(Genero,Tempo_BPM,Popularidad_cancion) %>% group_by(Genero) %>% summarise(BPM_medio=mean(Tempo_BPM),Popularidad_media=mean(Popularidad_cancion))
+generos_BPM
+
+Grafico_tempo_pop<-ggplot(data =generos_BPM, mapping = aes(x = BPM_medio, y = Popularidad_media, color=Genero)) +
+geom_point()+guides(color = guide_legend(override.aes = list(size=0), title.position = "rigth"))
+ggplotly(Grafico_tempo_pop)
+```
